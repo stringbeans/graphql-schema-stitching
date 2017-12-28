@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/stringbeans/graphql-schema-stitching#readme",
   "dependencies": {
+    "apollo-link-context": "^1.0.3",
     "apollo-link-http": "^1.3.2",
     "apollo-server-express": "^1.3.2",
     "bluebird": "^3.5.1",

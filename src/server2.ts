@@ -14,8 +14,8 @@ const schema = new GraphQLSchema({
     fields: {
       world: {
         type: GraphQLString,
-        resolve() {
-          console.log('resolving!')
+        resolve(_, args, context) {
+          console.log('context', context)
           return 'hello'
         }
       }
@@ -28,9 +28,12 @@ const PORT = 4000
 const app = express();
 
 // bodyParser is needed just for POST.
-app.use('/graphql', bodyParser.json(), graphqlExpress({
-  schema
-}))
+app.use('/graphql', bodyParser.json(), (req, res, next) => {
+  console.log('headers', req.headers, req.something)
+  graphqlExpress({
+    schema
+  })(req, res, next)
+})
 
 app.get('/graphiql', graphiqlExpress({ endpointURL: '/graphql' }))
 

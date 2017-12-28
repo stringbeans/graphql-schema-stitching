@@ -1,12 +1,6 @@
 import * as express from 'express'
 import * as bodyParser from 'body-parser'
 import { graphqlExpress, graphiqlExpress } from 'apollo-server-express'
-import {
-  graphql,
-  GraphQLSchema,
-  GraphQLObjectType,
-  GraphQLString
-} from 'graphql'
 
 import {
   makeExecutableSchema,
@@ -18,26 +12,28 @@ import {
 
 import { HttpLink } from 'apollo-link-http'
 import * as fetch from 'node-fetch'
+import { setContext } from 'apollo-link-context';
 
-const link = new HttpLink({
-  uri: 'http://localhost:4000/graphql',
-  fetch
-})
+const createLocalSchema = () => {
+  const typeDefs = `
+    type Query {
+      hello: String
+    }
+  `
 
-const localSchema = new GraphQLSchema({
-  query: new GraphQLObjectType({
-    name: 'RootQueryType',
-    fields: {
-      hello: {
-        type: GraphQLString,
-        resolve() {
-          console.log('resolving!')
-          return 'world'
-        }
+  const resolvers = {
+    Query: {
+      hello: (_, args, context) => {
+        return 'world'
       }
     }
+  }
+
+  return makeExecutableSchema({
+    typeDefs,
+    resolvers
   })
-})
+}
 
 const startServer = (schema) => {
   const PORT = 3000
@@ -45,23 +41,47 @@ const startServer = (schema) => {
   const app = express();
 
   // bodyParser is needed just for POST.
-  app.use('/graphql', bodyParser.json(), graphqlExpress({
-    schema
-  }))
+  app.use('/graphql', bodyParser.json(), (req, res, next) => {
+    return graphqlExpress({
+      schema,
+      context: {
+        headers: req.headers
+      }
+    })(req, res, next)
+  })
 
   app.get('/graphiql', graphiqlExpress({ endpointURL: '/graphql' }))
 
   app.listen(PORT);
 }
 
-introspectSchema(link)
-  .then((remoteSchema) => {
-    const executableSchema = makeRemoteExecutableSchema({
-      schema: remoteSchema,
-      link
-    })
-    
+const getRemoteExecutableSchema = async () => {
+  const http = new HttpLink({
+    uri: 'http://localhost:4000/graphql',
+    fetch
+  })
+  
+  const link = setContext((request, previousContext) => {
+    const headers = (previousContext && previousContext.graphqlContext && previousContext.graphqlContext.headers) || {}
+    // passthrough original authorization headers to the schema-stitched request so that the other server can perform authentication properly
+    return {
+      headers: {
+        authorization: headers.authorization
+      }
+    }
+  }).concat(http)
+
+  const remoteSchema = await introspectSchema(link)
+  
+  return makeRemoteExecutableSchema({
+    schema: remoteSchema,
+    link
+  })
+}
+
+getRemoteExecutableSchema()
+  .then((remoteExecutableSchema) => {
     startServer(mergeSchemas({
-      schemas: [localSchema, executableSchema]
+      schemas: [createLocalSchema(), remoteExecutableSchema]
     }))
   })
